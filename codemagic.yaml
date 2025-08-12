@@ -1,47 +1,56 @@
-# codemagic.yaml (Versiune Corectată)
+# codemagic.yaml (configurat pentru a crea un .ipa pentru AltStore)
 
 workflows:
-  ios-app-build:
-    name: iOS App Build
+  build-unsigned-ipa:
+    name: Build Unsigned IPA for AltStore
     instance_type: mac_mini_m1
-    integrations:
-      app_store_connect: YOUR_APP_STORE_CONNECT_INTEGRATION_NAME # Înlocuiește cu numele integrării tale
-
+    
+    # Nu avem nevoie de integrare cu App Store Connect aici
+    
     environment:
-      # Variabilele personalizate trebuie să fie într-un grup 'vars'
       vars:
         IOS_PROJECT: 'obs-ios-camera-source.xcodeproj'
         IOS_SCHEME: 'obs-ios-camera-source'
-      
-      # Poți adăuga și grupuri specifice Xcode aici dacă este necesar
-      # xcode:
-      #   version: latest
 
     scripts:
-      - name: Set up code signing settings
+      - name: Build unsigned .app bundle
         script: | 
-          xcode-project use-profiles
+          # Construim aplicatia pentru o arhitectura reala, dar fara a o semna
+          xcodebuild build -project "$IOS_PROJECT" \
+                           -scheme "$IOS_SCHEME" \
+                           -sdk iphoneos \
+                           -configuration Release \
+                           CODE_SIGN_IDENTITY="" \
+                           CODE_SIGNING_REQUIRED=NO \
+                           CODE_SIGNING_ALLOWED=NO
 
-      - name: Increment build number
+      - name: Create unsigned .ipa
         script: | 
-          # Folosește variabila de sistem a Codemagic pentru build number
-          agvtool new-version -all $(($CM_BUILD_NUMBER + 1))
-
-      - name: Build ipa for distribution
-        script: | 
-          # Folosește variabilele definite mai sus în grupul 'vars'
-          xcode-project build-ipa \
-            --project "$IOS_PROJECT" \
-            --scheme "$IOS_SCHEME"
+          # Acest script ia rezultatul build-ului (.app) si il impacheteaza intr-un .ipa
+          set -e # Opreste scriptul daca o comanda esueaza
+          echo "Finding .app bundle..."
+          # Gaseste calea catre folderul build/Release-iphoneos
+          BUILD_DIR=$(find $CM_BUILD_DIR/build -type d -name "Release-iphoneos")
+          APP_PATH=$(find "$BUILD_DIR" -type d -name "*.app" | head -n 1)
+          
+          if [ -z "$APP_PATH" ]; then
+            echo "Error: .app bundle not found!"
+            exit 1
+          fi
+          
+          echo ".app bundle found at: $APP_PATH"
+          
+          # Creeaza structura necesara pentru .ipa
+          echo "Creating Payload directory..."
+          mkdir -p Payload
+          echo "Copying .app to Payload..."
+          cp -R "$APP_PATH" Payload/
+          
+          # Arhiveaza folderul Payload intr-un fisier .ipa
+          echo "Creating .ipa file..."
+          zip -r "Unsigned_App.ipa" Payload
+          
+          echo "Unsigned .ipa created successfully!"
 
     artifacts:
-      - build/ios/ipa/*.ipa
-      - $HOME/Library/Developer/Xcode/DerivedData/**/Logs/Build/*.xcactivitylog
-
-    publishing:
-      email:
-        recipients:
-          - you@example.com # Înlocuiește cu email-ul tău
-        notify:
-          success: true
-          failure: true
+      - ./*.ipa
