@@ -1,0 +1,41 @@
+# codemagic.yaml
+
+workflows:
+  ios-app-build:
+    name: iOS App Build
+    # Alege versiunea de macOS și Xcode. 'latest' este de obicei cea mai bună opțiune.
+    instance_type: mac_mini_m1
+    integrations:
+      app_store_connect: YOUR_APP_STORE_CONNECT_INTEGRATION_NAME # Numele integrării din Codemagic
+
+    environment:
+      ios_project: 'obs-ios-camera-source.xcodeproj' # Numele fișierului .xcodeproj
+      ios_scheme: 'obs-ios-camera-source'         # Numele schemei de build
+
+    scripts:
+      - name: Set up code signing settings
+        script: | 
+          xcode-project use-profiles
+
+      - name: Increment build number
+        script: | 
+          agvtool new-version -all $(($CM_BUILD_NUMBER + 1))
+
+      - name: Build ipa for distribution
+        script: | 
+          xcode-project build-ipa \
+            --project "$ios_project" \
+            --scheme "$ios_scheme"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Logs/Build/*.xcactivitylog
+
+    publishing:
+      # Poți adăuga aici trimiterea automată pe email sau TestFlight, dacă dorești
+      email:
+        recipients:
+          - you@example.com # Înlocuiește cu email-ul tău
+        notify:
+          success: true
+          failure: true
